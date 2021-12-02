@@ -1,23 +1,10 @@
-use std::fs::File;
-use std::io::{self, BufRead};
+use input_parser;
 
 fn main() {
-    if let Ok(inputs) = parse_inputs("./input") {
+    if let Ok(inputs) = input_parser::parse_inputs("./input") {
         let increased = count_increases(&running_sum(&inputs, 3));
         println!("Depth increased {} times", increased);
     }
-}
-
-fn parse_inputs(filename: &str) -> io::Result<Vec<i32>> {
-    let file = File::open(filename)?;
-    let lines = io::BufReader::new(file).lines();
-    Ok(
-        lines
-        .filter_map(|s| {
-            s.ok().and_then(|s| s.parse::<i32>().ok())
-        })
-        .collect()
-    )
 }
 
 fn running_sum(depths: &Vec<i32>, window_size: usize) -> Vec<i32> {

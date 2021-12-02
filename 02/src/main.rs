@@ -1,7 +1,7 @@
-use std::fs::File;
-use std::io::{self, BufRead};
 use std::str::FromStr;
 use std::num::ParseIntError;
+
+use input_parser;
 
 enum Direction {
     Forward(i32),
@@ -44,26 +44,13 @@ struct Position {
 }
 
 fn main() {
-    if let Ok(inputs) = parse_inputs("./input") {
+    if let Ok(inputs) = input_parser::parse_inputs("./input") {
         let final_position = determine_final_position(&inputs, None);
         println!("Final position: {:?} ({})", final_position, final_position.horizontal * final_position.depth);
         let final_position_with_aim = determine_final_position_with_aim(&inputs, None);
         println!("Final position with aim: {:?} ({})", final_position_with_aim, final_position_with_aim.horizontal * final_position_with_aim.depth);
     }
 }
-
-fn parse_inputs(filename: &str) -> io::Result<Vec<Direction>> {
-    let file = File::open(filename)?;
-    let lines = io::BufReader::new(file).lines();
-    Ok(
-        lines
-        .filter_map(|s| {
-            s.ok().and_then(|s| s.parse::<Direction>().ok())
-        })
-        .collect()
-    )
-}
-
 
 fn determine_final_position(commands: &Vec<Direction>, start_position: Option<Position>) -> Position {
     let mut position = start_position.unwrap_or(Position{horizontal: 0, depth: 0, aim: 0});
