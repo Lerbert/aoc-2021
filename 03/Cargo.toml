@@ -1,0 +1,10 @@
+[package]
+name = "day03"
+version = "0.1.0"
+authors = ["Florian Lercher <florian.lercher@tum.de>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+input_parser = { path = "../input_parser"}
