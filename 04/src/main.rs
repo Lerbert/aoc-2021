@@ -106,21 +106,23 @@ fn main() {
         }
         let drawn_numbers: Vec<u32> = drawn_numbers[0].split(',').filter_map(|s| s.parse::<u32>().ok()).collect();
         let mut boards: Vec<Board> = split_iter.filter_map(|l| Board::new(l).ok()).collect();
-        if let Some(score) = play_bingo(&drawn_numbers, &mut boards) {
-            println!("First winning board has score {}", score);
-        }
+        let (first_score, last_score) = play_bingo(&drawn_numbers, &mut boards);
+        println!("First winning board has score {}", first_score);
+        println!("Last winning board has score {}", last_score);
     }
 }
 
-fn play_bingo(drawn_numbers: &Vec<u32>, boards: &mut Vec<Board>) -> Option<u32> {
+fn play_bingo(drawn_numbers: &Vec<u32>, boards: &mut Vec<Board>) -> (u32, u32) {
+    let mut winning_boards: Vec<u32> = Vec::new();
     for number in drawn_numbers {
+        if boards.is_empty() {
+            break;
+        }
         for board in boards.iter_mut() {
             board.mark(*number)
         }
-        let winning_board = boards.iter().filter(|b| b.has_won()).next();
-        if let Some(b) = winning_board {
-            return Some(b.score() * number);
-        }
+        winning_boards.extend(boards.iter().filter(|b| b.has_won()).map(|b| b.score() * number));
+        boards.retain(|b| !b.has_won());
     }
-    None
+    (winning_boards[0], winning_boards[winning_boards.len() - 1])
 }
