@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use std::num::ParseIntError;
 use std::str::FromStr;
@@ -31,39 +32,19 @@ impl Line {
         assert!(self.is_horizontal_or_vertical() | self.is_diagonal());
         let x_diff = self.end.x - self.start.x;
         let y_diff = self.end.y - self.start.y;
-
-        if x_diff == 0 {
-            (0..=y_diff.abs())
-                .map(|y| Point {
-                    x: self.start.x,
-                    y: self.start.y + (y * y_diff.signum()),
-                })
-                .collect()
-        } else if y_diff == 0 {
-            (0..=x_diff.abs())
-                .map(|x| Point {
-                    x: self.start.x + (x * x_diff.signum()),
-                    y: self.start.y,
-                })
-                .collect()
-        } else if y_diff.abs() == x_diff.abs() {
-            (0..=y_diff.abs())
-                .zip(0..=x_diff.abs())
-                .map(|(y, x)| Point {
-                    x: self.start.x + (x * x_diff.signum()),
-                    y: self.start.y + (y * y_diff.signum()),
-                })
-                .collect()
-        } else {
-            panic!("line not horizontal, vertical or diagonal")
-        }
+        (0..=max(y_diff.abs(), x_diff.abs()))
+            .map(|i| Point {
+                x: self.start.x + (i * x_diff.signum()),
+                y: self.start.y + (i * y_diff.signum()),
+            })
+            .collect()
     }
 }
 
 #[derive(Debug)]
 enum ParseLineError {
     ParseCoordinate(ParseIntError),
-    UnexpectedFormat(),
+    UnexpectedFormat(String),
 }
 
 impl FromStr for Line {
@@ -78,7 +59,7 @@ impl FromStr for Line {
             .collect();
         let coordinates = coordinates.map_err(|e| ParseLineError::ParseCoordinate(e))?;
         if coordinates.len() != 4 {
-            return Err(ParseLineError::UnexpectedFormat());
+            return Err(ParseLineError::UnexpectedFormat(String::from(s)));
         }
         Ok(Line {
             start: Point {
