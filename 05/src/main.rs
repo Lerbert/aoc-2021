@@ -21,26 +21,41 @@ impl Line {
         (self.start.x == self.end.x) | (self.start.y == self.end.y)
     }
 
-    fn covered_points(&self) -> Vec<Point> {
-        assert!(self.is_horizontal_or_vertical());
+    fn is_diagonal(&self) -> bool {
         let x_diff = self.end.x - self.start.x;
         let y_diff = self.end.y - self.start.y;
+        y_diff.abs() == x_diff.abs()
+    }
+
+    fn covered_points(&self) -> Vec<Point> {
+        assert!(self.is_horizontal_or_vertical() | self.is_diagonal());
+        let x_diff = self.end.x - self.start.x;
+        let y_diff = self.end.y - self.start.y;
+
         if x_diff == 0 {
             (0..=y_diff.abs())
-                .map(|i| Point {
+                .map(|y| Point {
                     x: self.start.x,
-                    y: self.start.y + (i * y_diff.signum()),
+                    y: self.start.y + (y * y_diff.signum()),
                 })
                 .collect()
         } else if y_diff == 0 {
             (0..=x_diff.abs())
-                .map(|i| Point {
-                    x: self.start.x + (i * x_diff.signum()),
+                .map(|x| Point {
+                    x: self.start.x + (x * x_diff.signum()),
                     y: self.start.y,
                 })
                 .collect()
+        } else if y_diff.abs() == x_diff.abs() {
+            (0..=y_diff.abs())
+                .zip(0..=x_diff.abs())
+                .map(|(y, x)| Point {
+                    x: self.start.x + (x * x_diff.signum()),
+                    y: self.start.y + (y * y_diff.signum()),
+                })
+                .collect()
         } else {
-            panic!("line not horizontal or vertical")
+            panic!("line not horizontal, vertical or diagonal")
         }
     }
 }
@@ -80,7 +95,7 @@ impl FromStr for Line {
 
 fn main() {
     if let Ok(inputs) = input_parser::parse_inputs::<Line>("./input") {
-        let h_v_lines: Vec<&Line> = inputs
+        let h_v_lines = inputs
             .iter()
             .filter(|&l| l.is_horizontal_or_vertical())
             .collect();
@@ -88,6 +103,15 @@ fn main() {
         println!(
             "{} points are covered by at least two horizontal or vertical lines",
             covered_points
+        );
+        let h_v_d_lines = inputs
+            .iter()
+            .filter(|&l| l.is_horizontal_or_vertical() | l.is_diagonal())
+            .collect();
+        let covered_points_diag = find_num_points_covered_by_at_least_two_lines(&h_v_d_lines);
+        println!(
+            "{} points are covered by at least two horizontal, vertical or diagonal lines",
+            covered_points_diag
         );
     }
 }
