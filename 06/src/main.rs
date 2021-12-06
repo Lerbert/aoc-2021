@@ -1,18 +1,48 @@
 use std::fs;
+use std::ops;
 
 #[derive(Debug)]
-struct FishMap {
-    day: usize,
-    fishes: [u128; 7],
-    new_fishes: [u128; 3],
+struct RingArray<T: Sized, const N: usize> {
+    data: [T; N],
 }
 
-impl FishMap {
+impl<T: Sized, const N: usize> RingArray<T, N> {
+    fn from(data: [T; N]) -> Self {
+        RingArray { data }
+    }
+
+    fn iter(&self) -> std::slice::Iter<T> {
+        self.data.iter()
+    }
+}
+
+impl<T: Sized, const N: usize> ops::Index<usize> for RingArray<T, N> {
+    type Output = T;
+
+    fn index(&self, i: usize) -> &Self::Output {
+        &self.data[i % N]
+    }
+}
+
+impl<T: Sized, const N: usize> ops::IndexMut<usize> for RingArray<T, N> {
+    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
+        &mut self.data[i % N]
+    }
+}
+
+#[derive(Debug)]
+struct FishSimulation {
+    day: usize,
+    fishes: RingArray<u128, 7>,
+    new_fishes: RingArray<u128, 3>,
+}
+
+impl FishSimulation {
     fn new(fishes: [u128; 7]) -> Self {
-        FishMap {
+        FishSimulation {
             day: 0,
-            fishes,
-            new_fishes: [0; 3],
+            fishes: RingArray::from(fishes),
+            new_fishes: RingArray::from([0; 3]),
         }
     }
 
@@ -27,20 +57,12 @@ impl FishMap {
     }
 
     fn grow_up_new_fishes(&mut self) {
-        self.fishes[self.get_index_fishes(7)] += self.new_fishes[self.get_index_new_fishes(0)];
-        self.new_fishes[self.get_index_new_fishes(0)] = 0
+        self.fishes[self.day + 7] += self.new_fishes[self.day];
+        self.new_fishes[self.day] = 0
     }
 
     fn spawn_new_fishes(&mut self) {
-        self.new_fishes[self.get_index_new_fishes(2)] = self.fishes[self.get_index_fishes(0)]
-    }
-
-    fn get_index_fishes(&self, i: usize) -> usize {
-        (self.day + i) % 7
-    }
-
-    fn get_index_new_fishes(&self, i: usize) -> usize {
-        (self.day + i) % 3
+        self.new_fishes[self.day + 2] = self.fishes[self.day]
     }
 }
 
@@ -53,10 +75,20 @@ fn main() {
                 initial_fishes[fish as usize] += 1;
             }
         }
-        let mut fishes = FishMap::new(initial_fishes);
-        for _ in 0..256 {
-            fishes.advance_day();
+        simulate_fish_growth(initial_fishes, 256, |day| (day == 80) | (day == 256))
+    }
+}
+
+fn simulate_fish_growth<F: Fn(u32) -> bool>(
+    initial_fishes: [u128; 7],
+    days: u32,
+    is_output_day: F,
+) {
+    let mut fishes = FishSimulation::new(initial_fishes);
+    for day in 0..=days {
+        if is_output_day(day) {
+            println!("There are {} fishes on day {}", fishes.count_fishes(), day);
         }
-        println!("{:?} {}", fishes, fishes.count_fishes());
+        fishes.advance_day();
     }
 }
