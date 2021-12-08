@@ -1,7 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::iter::FromIterator;
-use std::process::Command;
 use std::str::FromStr;
 
 use anyhow;
@@ -19,62 +16,22 @@ enum Segment {
     G,
 }
 
-static ZERO: [Segment; 6] = [
-    Segment::A,
-    Segment::B,
-    Segment::C,
-    Segment::E,
-    Segment::F,
-    Segment::G,
-];
-static ONE: [Segment; 2] = [Segment::C, Segment::F];
-static TWO: [Segment; 5] = [Segment::A, Segment::C, Segment::D, Segment::E, Segment::G];
-static THREE: [Segment; 5] = [Segment::A, Segment::C, Segment::D, Segment::F, Segment::G];
-static FOUR: [Segment; 4] = [Segment::B, Segment::C, Segment::D, Segment::F];
-static FIVE: [Segment; 5] = [Segment::A, Segment::B, Segment::D, Segment::F, Segment::G];
-static SIX: [Segment; 6] = [
-    Segment::A,
-    Segment::B,
-    Segment::D,
-    Segment::E,
-    Segment::F,
-    Segment::G,
-];
-static SEVEN: [Segment; 3] = [Segment::A, Segment::C, Segment::F];
-static EIGHT: [Segment; 7] = [
-    Segment::A,
-    Segment::B,
-    Segment::C,
-    Segment::D,
-    Segment::E,
-    Segment::F,
-    Segment::G,
-];
-static NINE: [Segment; 6] = [
-    Segment::A,
-    Segment::B,
-    Segment::C,
-    Segment::D,
-    Segment::F,
-    Segment::G,
-];
-
 impl Segment {
     fn from_char(c: char) -> Result<Self, anyhow::Error> {
         match c {
-            'A' | 'a' | '1' => Ok(Segment::A),
-            'B' | 'b' | '2' => Ok(Segment::B),
-            'C' | 'c' | '3' => Ok(Segment::C),
-            'D' | 'd' | '4' => Ok(Segment::D),
-            'E' | 'e' | '5' => Ok(Segment::E),
-            'F' | 'f' | '6' => Ok(Segment::F),
-            'G' | 'g' | '7' => Ok(Segment::G),
+            'a' => Ok(Segment::A),
+            'b' => Ok(Segment::B),
+            'c' => Ok(Segment::C),
+            'd' => Ok(Segment::D),
+            'e' => Ok(Segment::E),
+            'f' => Ok(Segment::F),
+            'g' => Ok(Segment::G),
             x => anyhow::bail!("unexpected token {}", x),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct SevenSegment {
     active_segments: HashSet<Segment>,
 }
@@ -82,28 +39,6 @@ struct SevenSegment {
 impl SevenSegment {
     fn get_active_cnt(&self) -> u32 {
         self.active_segments.len() as u32
-    }
-
-    fn get_digit(&self, translation: &HashMap<Segment, Segment>) -> Option<u32> {
-        let real_active: HashSet<Segment> = self
-            .active_segments
-            .iter()
-            .map(|s| *translation.get(s).expect("missing translation"))
-            .collect();
-            println!("{:?}", real_active);
-        match real_active {
-            x if x == ZERO.iter().cloned().collect() => Some(0),
-            x if x == ONE.iter().cloned().collect() => Some(1),
-            x if x == TWO.iter().cloned().collect() => Some(2),
-            x if x == THREE.iter().cloned().collect() => Some(3),
-            x if x == FOUR.iter().cloned().collect() => Some(4),
-            x if x == FIVE.iter().cloned().collect() => Some(5),
-            x if x == SIX.iter().cloned().collect() => Some(6),
-            x if x == SEVEN.iter().cloned().collect() => Some(7),
-            x if x == EIGHT.iter().cloned().collect() => Some(8),
-            x if x == NINE.iter().cloned().collect() => Some(9),
-            _ => None,
-        }
     }
 }
 
@@ -140,59 +75,98 @@ impl Display {
     }
 
     fn determine_output(&self) -> u32 {
-        let mut segment_mapping: HashMap<Segment, HashSet<Segment>> = HashMap::new();
+        const EMPTY_VEC: Vec<&HashSet<Segment>> = Vec::new();
+        let mut digit_mapping: HashMap<u32, Vec<&HashSet<Segment>>> = [EMPTY_VEC; 10]
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, x)| (i as u32, x))
+            .collect();
         self.observed_digits.iter().for_each(|d| {
-            let possible_interpretations = HashSet::from_iter(match d.get_active_cnt() {
-                2 => vec![Segment::C, Segment::F],                         // 1
-                3 => vec![Segment::A, Segment::C, Segment::F],             // 7
-                4 => vec![Segment::B, Segment::C, Segment::D, Segment::F], // 4
-                5 => vec![
-                    Segment::A,
-                    Segment::B,
-                    Segment::C,
-                    Segment::D,
-                    Segment::E,
-                    Segment::F,
-                    Segment::G,
-                ], // 2, 3, 5
-                6 => vec![
-                    Segment::A,
-                    Segment::B,
-                    Segment::C,
-                    Segment::D,
-                    Segment::E,
-                    Segment::F,
-                    Segment::G,
-                ], // 0, 6, 9
-                7 => vec![
-                    Segment::A,
-                    Segment::B,
-                    Segment::C,
-                    Segment::D,
-                    Segment::E,
-                    Segment::F,
-                    Segment::G,
-                ], // 8
+            let insert_positions = match d.get_active_cnt() {
+                2 => vec![1],
+                3 => vec![7],
+                4 => vec![4],
+                5 => vec![2, 3, 5],
+                6 => vec![0, 6, 9],
+                7 => vec![8],
                 _ => vec![],
-            });
-            for pos in &d.active_segments {
-                let possible_digits = segment_mapping
-                    .get(&pos)
-                    .map(|v| {
-                        v.intersection(&possible_interpretations)
-                            .map(|&s| s)
-                            .collect()
-                    })
-                    .unwrap_or(possible_interpretations.clone());
-                segment_mapping.insert(*pos, possible_digits);
+            };
+            for pos in insert_positions {
+                digit_mapping
+                    .get_mut(&pos)
+                    .map(|v| v.push(&d.active_segments))
+                    .expect("missing key");
             }
         });
-        let translation = solve_minizinc(&segment_mapping);
-        println!("{:?}", translation);
+
+        // 1, 4, 7, and 8 are unique, filter by containing 1
+        let digit_mapping: HashMap<u32, Vec<&HashSet<Segment>>> = digit_mapping
+            .iter()
+            .map(|(&k, v)| {
+                (
+                    k,
+                    v.iter()
+                        .filter(|s| match k {
+                            0 | 3 | 9 => {
+                                digit_mapping.get(&1).expect("missing key")[0].is_subset(s)
+                            }
+                            2 | 5 | 6 => {
+                                !digit_mapping.get(&1).expect("missing key")[0].is_subset(s)
+                            }
+                            _ => true,
+                        })
+                        .map(|&s| s)
+                        .collect(),
+                )
+            })
+            .collect();
+        // 1, 3, 4, 6, 7 and 8 are unique
+        let digit_mapping: HashMap<u32, Vec<&HashSet<Segment>>> = digit_mapping
+            .iter()
+            .map(|(&k, v)| {
+                (
+                    k,
+                    v.iter()
+                        .filter(|s| match k {
+                            // distinguish 0 and 9 by 3 being subset of 9, but not of 0
+                            0 => !digit_mapping.get(&3).expect("missing key")[0].is_subset(s),
+                            9 => digit_mapping.get(&3).expect("missing key")[0].is_subset(s),
+                            // distinguish 2 and 5 by 6 being superset of 5, but not of 2
+                            2 => !digit_mapping.get(&6).expect("missing key")[0].is_superset(s),
+                            5 => digit_mapping.get(&6).expect("missing key")[0].is_superset(s),
+                            _ => true,
+                        })
+                        .map(|&s| s)
+                        .collect(),
+                )
+            })
+            .collect();
+
+        // every digit should be unique now so flatten Vecs
+        let digit_mapping: HashMap<u32, &HashSet<Segment>> = digit_mapping
+            .iter()
+            .map(|(&k, v)| {
+                assert_eq!(v.len(), 1);
+                (k, v[0])
+            })
+            .collect();
+
         self.output_values
             .iter()
-            .map(|s| s.get_digit(&translation).expect("malformed seven segment"))
-            .fold(0, |acc, d| (acc * 10) + d)
+            .map(|s| {
+                digit_mapping
+                    .iter()
+                    .find_map(|(&k, &v)| {
+                        if *v == s.active_segments {
+                            Some(k)
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("invalid pattern")
+            })
+            .fold(0, |acc, d| acc * 10 + d)
     }
 }
 
@@ -219,62 +193,8 @@ impl FromStr for Display {
     }
 }
 
-fn solve_minizinc(constraints: &HashMap<Segment, HashSet<Segment>>) -> HashMap<Segment, Segment> {
-    let constraints_mzn: String = constraints
-        .iter()
-        .map(|(seg, possible)| format!("constraint {:?}_ in {:?};", seg, possible))
-        .collect();
-    let model = format!(
-        "include \"alldifferent.mzn\";
-
-    enum Segment = {{A, B, C, D, E, F, G}};
-    
-    var int: A_;
-    var int: B_;
-    var int: C_;
-    var int: D_;
-    var int: E_;
-    var int: F_;
-    var int: G_;
-    
-    constraint alldifferent([A_, B_, C_, D_, E_, F_, G_]);
-    
-    {}
-    
-    solve satisfy;",
-        constraints_mzn
-    );
-    fs::write("./tmp.mzn", model).expect("unable to write model");
-    let solution = String::from_utf8(
-        Command::new("mzn-fzn")
-            .arg("./tmp.mzn")
-            .output()
-            .expect("MiniZinc failed")
-            .stdout,
-    )
-    .expect("no UTF8 output");
-
-    solution
-        .split('\n')
-        .filter(|&s| s != "")
-        .map(|s| {
-            (
-                s.chars().nth(0).expect("empty line"),
-                s.chars().rev().nth(1).expect("empty line"),
-            )
-        })
-        .filter_map(|(c1, c2)| {
-            if let (Ok(seg1), Ok(seg2)) = (Segment::from_char(c1), Segment::from_char(c2)) {
-                Some((seg1, seg2))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 fn main() {
-    if let Ok(inputs) = input_parser::parse_inputs::<Display>("./test") {
+    if let Ok(inputs) = input_parser::parse_inputs::<Display>("./input") {
         let unique_segment_numbers: u32 = inputs
             .iter()
             .map(|d| d.get_unique_segment_number_cnt())
@@ -283,6 +203,7 @@ fn main() {
             "There are {} digits with unique segment count (i.e. 1, 4, 7, 8)",
             unique_segment_numbers
         );
-        println!("{}", inputs[0].determine_output());
+        let output_sum: u32 = inputs.iter().map(|d| d.determine_output()).sum();
+        println!("The sum of all outputs is {}", output_sum);
     }
 }
