@@ -24,12 +24,25 @@ def simulate_octopuses(octopuses, steps):
         total_flashes += flashes
     return octopuses, total_flashes
 
+def find_first_all_flash(octopuses):
+    step = 0
+    while True:
+        step += 1
+        octopuses, flashes = octopus_step(octopuses)
+        if flashes == np.ma.size(octopuses):
+            break
+    return step
+
 def main():
     with open("./input", "r") as f:
         octopuses = np.array([[int(c) for c in l.strip()] for l in f if l != ""])
 
-    _, flashes = simulate_octopuses(octopuses, 100)
-    print(flashes)
+    steps = 100
+    _, flashes = simulate_octopuses(octopuses, steps)
+    print(f"After {steps} steps there have been {flashes} flashes in total")
+
+    first_all_flash = find_first_all_flash(octopuses)
+    print(f"After {first_all_flash} steps all octopuses flash together for the first time")
 
 
 if __name__ == "__main__":
