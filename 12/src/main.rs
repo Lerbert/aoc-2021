@@ -18,6 +18,10 @@ impl Node {
             large: false,
         }
     }
+    
+    fn is_start(&self) -> bool {
+        self.name == "start"
+    }
 
     fn is_end(&self) -> bool {
         self.name == "end"
@@ -86,24 +90,38 @@ impl Graph {
     fn find_paths(&self) -> Vec<Vec<Node>> {
         let mut stack = vec![Node::start()];
         let mut paths = Vec::new();
-        self.dfs_helper(&mut stack, &mut paths);
+        self.dfs_helper(&mut stack, &mut paths, true);
         paths
     }
 
-    fn dfs_helper(&self, stack: &mut Vec<Node>, paths: &mut Vec<Vec<Node>>) {
+    fn find_paths_two_small_caves_allowed(&self) -> Vec<Vec<Node>> {
+        let mut stack = vec![Node::start()];
+        let mut paths = Vec::new();
+        self.dfs_helper(&mut stack, &mut paths, false);
+        paths
+    }
+
+    fn dfs_helper(
+        &self,
+        stack: &mut Vec<Node>,
+        paths: &mut Vec<Vec<Node>>,
+        visited_two_small: bool,
+    ) {
         let node = stack.last().expect("stack is empty");
         if node.is_end() {
             // Complete a path
             paths.push(stack.clone());
         } else {
             let outgoing = self.edges.get(&node).expect("missing edges");
-            let to_visit: Vec<_> = outgoing
-                .iter()
-                .filter(|n| n.large | !stack.contains(n))
-                .collect();
-            for node in to_visit {
-                stack.push(node.clone());
-                self.dfs_helper(stack, paths);
+            for node in outgoing {
+                if node.large | !stack.contains(node) {
+                    stack.push(node.clone());
+                    self.dfs_helper(stack, paths, visited_two_small);
+                } else if !visited_two_small & !node.is_start() {
+                    // small cave that was already visited, but we are allowed to visit it again
+                    stack.push(node.clone());
+                    self.dfs_helper(stack, paths, true);
+                }
             }
         }
         stack.pop();
@@ -114,6 +132,14 @@ fn main() {
     if let Ok(edges) = input_parser::parse_inputs::<Edge>("./input") {
         let caves = Graph::from(edges);
         let paths = caves.find_paths();
-        println!("{}", paths.len())
+        let paths_two_small = caves.find_paths_two_small_caves_allowed();
+        println!(
+            "There are {} paths when visiting each small cave at most once",
+            paths.len()
+        );
+        println!(
+            "There are {} paths when one small cave may be visited twice",
+            paths_two_small.len()
+        );
     }
 }
