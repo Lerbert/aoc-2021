@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use textplots::{Chart, Plot, Shape};
 use thiserror::Error;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
@@ -125,5 +126,8 @@ fn main() {
         acc.push(next_pts);
         acc
     });
-    println!("{:?}", folding_steps[0].len())
+    println!("There are {} points left after folding for the first time", folding_steps[0].len());
+    let final_configuration: Vec<_> = folding_steps.last().expect("no folds performed").iter().map(|p| ((p.x + 1) as f32, (- p.y - 1)  as f32)).collect();
+    println!("The activation code is:");
+    Chart::new(256, 32, 0_f32, 40_f32).lineplot(&Shape::Points(final_configuration.as_slice())).display();
 }
