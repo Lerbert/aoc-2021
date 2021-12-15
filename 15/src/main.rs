@@ -26,17 +26,20 @@ impl Ord for Path {
     }
 }
 
+#[derive(Debug)]
 struct Cave {
     risk_levels: Vec<Vec<u8>>,
     height: usize,
     width: usize,
+    expansion_factor: usize,
 }
 
 impl Cave {
-    fn from(risk_levels: Vec<Vec<u8>>) -> Self {
+    fn from(risk_levels: Vec<Vec<u8>>, expansion_factor: usize) -> Self {
         Cave {
             height: risk_levels.len(),
             width: risk_levels[0].len(),
+            expansion_factor,
             risk_levels,
         }
     }
@@ -44,18 +47,30 @@ impl Cave {
     fn get_neighbors(&self, node: Index) -> Vec<(Index, u8)> {
         let mut neighbors = Vec::new();
         if node.0 > 0 {
-            neighbors.push(((node.0 - 1, node.1), self.risk_levels[node.0 - 1][node.1]));
+            neighbors.push(((node.0 - 1, node.1), self.get_risk((node.0 - 1, node.1))));
         }
         if node.1 > 0 {
-            neighbors.push(((node.0, node.1 - 1), self.risk_levels[node.0][node.1 - 1]));
+            neighbors.push(((node.0, node.1 - 1), self.get_risk((node.0, node.1 - 1))));
         }
-        if node.0 < self.height - 1 {
-            neighbors.push(((node.0 + 1, node.1), self.risk_levels[node.0 + 1][node.1]));
-        }
-        if node.1 < self.width - 1 {
-            neighbors.push(((node.0, node.1 + 1), self.risk_levels[node.0][node.1 + 1]));
-        }
+        neighbors.push(((node.0 + 1, node.1), self.get_risk((node.0 + 1, node.1))));
+        neighbors.push(((node.0, node.1 + 1), self.get_risk((node.0, node.1 + 1))));
         neighbors
+            .iter()
+            .filter_map(|&(idx, r)| r.map(|r| (idx, r)))
+            .collect()
+    }
+
+    fn get_risk(&self, node: Index) -> Option<u8> {
+        let risk_incr = node.0 / self.height + node.1 / self.width;
+        let base_idx = (node.0 % self.height, node.1 % self.width);
+        if node.0 < self.height * self.expansion_factor
+            && node.1 < self.width * self.expansion_factor
+        {
+            // Index is in bounds, 0 is enforced by unsigned type
+            Some((self.risk_levels[base_idx.0][base_idx.1] + risk_incr as u8) % 9 + 1)
+        } else {
+            None
+        }
     }
 }
 
@@ -77,7 +92,11 @@ fn lowest_risk_cost(cave: &Cave, from: Index, to: Index) -> Option<u32> {
 
             for (next, risk) in cave.get_neighbors(current.to_node) {
                 let total_risk = current.risk + risk as u32;
-                if lowest_risks.get(&next).map(|p| p.risk > total_risk).unwrap_or(true) {
+                if lowest_risks
+                    .get(&next)
+                    .map(|p| p.risk > total_risk)
+                    .unwrap_or(true)
+                {
                     pq.push(Path {
                         to_node: next,
                         risk: total_risk,
@@ -85,8 +104,20 @@ fn lowest_risk_cost(cave: &Cave, from: Index, to: Index) -> Option<u32> {
                 }
             }
         }
-    }    
+    }
     lowest_risks.get(&to).map(|p| p.risk)
+}
+
+fn find_path(inputs: &Vec<Vec<u8>>, expansion_factor: usize) -> Option<u32> {
+    let cave = Cave::from(inputs.clone(), expansion_factor);
+    lowest_risk_cost(
+        &cave,
+        (0, 0),
+        (
+            cave.height * expansion_factor - 1,
+            cave.width * expansion_factor - 1,
+        ),
+    )
 }
 
 fn main() {
@@ -96,12 +127,13 @@ fn main() {
         .filter(|&s| s != "")
         .map(|s| {
             s.chars()
-                .map(|c| c.to_digit(10).expect("non number character found") as u8)
+                .map(|c| c.to_digit(10).expect("non number character found") as u8 - 1)
                 .collect()
         })
         .collect();
-    println!("{:?}", inputs);
-    let cave = Cave::from(inputs);
-    let r = lowest_risk_cost(&cave, (0, 0), (cave.height - 1, cave.width - 1));
-    println!("{:?}", r);
+    let risk = find_path(&inputs, 1).expect("no path found");
+    println!("Using only the map fragment the lowest risk is {}", risk);
+
+    let risk = find_path(&inputs, 5).expect("no path found");
+    println!("Using the full map the lowest risk is {}", risk);
 }
