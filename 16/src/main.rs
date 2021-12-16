@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 use bit_vec::BitVec;
 use hex;
 
@@ -68,80 +68,116 @@ impl BITSPacket for OperatorBITSPacket {
 struct BITSParser {
     bits: BitVec,
     offset: usize,
+    length: usize,
 }
 
 impl BITSParser {
     pub fn from(bits: BitVec) -> Self {
-        BITSParser { bits, offset: 0 }
+        BITSParser {
+            length: bits.len(),
+            offset: 0,
+            bits,
+        }
     }
 
-    pub fn parse_packet(&mut self) -> Box<dyn BITSPacket> {
-        let version = self.parse_number(3) as u8;
-        let type_id = self.parse_number(3) as u8;
+    pub fn parse_packet(mut self) -> Result<Box<dyn BITSPacket>> {
+        self.parse_packet_helper()
+    }
+
+    fn parse_packet_helper(&mut self) -> Result<Box<dyn BITSPacket>> {
+        let version = self
+            .parse_number(3)
+            .map_err(|e| anyhow!("Error parsing version: {}", e))? as u8;
+        let type_id = self
+            .parse_number(3)
+            .map_err(|e| anyhow!("Error parsing type_id: {}", e))? as u8;
         if type_id == 4 {
             // Literal packet
-            let value = self.parse_value();
-            Box::new(LiteralBITSPacket {
+            let value = self.parse_value()?;
+            Ok(Box::new(LiteralBITSPacket {
                 version,
                 type_id,
                 value,
-            })
+            }))
         } else {
             // Operator packet
-            let length_type_id = self.next();
+            let length_type_id = self
+                .next()
+                .map_err(|e| anyhow!("Error parsing length_type_id: {}", e))?;
             if length_type_id {
                 // Next 11 are number of subpackets
-                let subpacket_cnt = self.parse_number(11);
-                let subpackets = (0..subpacket_cnt).map(|_| self.parse_packet()).collect();
-                Box::new(OperatorBITSPacket {
+                let subpacket_cnt = self
+                    .parse_number(11)
+                    .map_err(|e| anyhow!("Error parsing subpacket_cnt: {}", e))?;
+                let subpackets = (0..subpacket_cnt)
+                    .map(|_| self.parse_packet_helper())
+                    .collect::<Result<Vec<_>>>()
+                    .map_err(|e| anyhow!("Error parsing subpacket: {}", e))?;
+                Ok(Box::new(OperatorBITSPacket {
                     version,
                     type_id,
                     _length_type_id: length_type_id as u8,
                     _length: subpacket_cnt,
                     subpackets,
-                })
+                }))
             } else {
                 // Next 15 are total length of subpackets
-                let subpacket_length = self.parse_number(15);
+                let subpacket_length = self
+                    .parse_number(15)
+                    .map_err(|e| anyhow!("Error parsing subpacket_length: {}", e))?;
                 let current_offset = self.offset;
                 let mut subpackets = Vec::new();
                 while self.offset < (current_offset + subpacket_length as usize) {
-                    subpackets.push(self.parse_packet())
+                    subpackets.push(
+                        self.parse_packet_helper()
+                            .map_err(|e| anyhow!("Error parsing subpacket: {}", e))?,
+                    )
                 }
-                Box::new(OperatorBITSPacket {
+                Ok(Box::new(OperatorBITSPacket {
                     version,
                     type_id,
                     _length_type_id: length_type_id as u8,
                     _length: subpacket_length,
                     subpackets,
-                })
+                }))
             }
         }
     }
 
-    fn parse_number(&mut self, length: usize) -> u32 {
+    fn parse_number(&mut self, length: usize) -> Result<u32> {
+        if self.offset + length > self.length {
+            bail!(
+                "Reached end of message while reading number of length {}",
+                length
+            )
+        }
         let number = (0..length)
             .map(|i| self.bits[self.offset + i])
             .fold(0, |acc, x| 2 * acc + x as u32);
         self.offset += length;
-        number
+        Ok(number)
     }
 
-    fn parse_value(&mut self) -> u128 {
+    fn parse_value(&mut self) -> Result<u128> {
         let mut cont = true;
         let mut value = 0;
         while cont {
-            cont = self.next();
+            cont = self.next()?;
             value *= 16;
-            value += self.parse_number(4) as u128;
+            value += self
+                .parse_number(4)
+                .map_err(|e| anyhow!("Error parsing value: {}", e))? as u128;
         }
-        value
+        Ok(value)
     }
 
-    fn next(&mut self) -> bool {
+    fn next(&mut self) -> Result<bool> {
+        if self.offset + 1 > self.length {
+            bail!("Reached end of message while reading bool")
+        }
         let next = self.bits[self.offset];
         self.offset += 1;
-        next
+        Ok(next)
     }
 }
 
@@ -149,11 +185,13 @@ fn main() -> Result<()> {
     let inputs = include_str!("../input").trim();
     let inputs = hex::decode(inputs)?;
     let message = BitVec::from_bytes(inputs.as_slice());
-    
-    let mut parser = BITSParser::from(message);
-    let packet = parser.parse_packet();
-    
-    println!("The sum of the version numbers is {:?}", packet.version_sum());
+    let parser = BITSParser::from(message);
+    let packet = parser.parse_packet()?;
+
+    println!(
+        "The sum of the version numbers is {:?}",
+        packet.version_sum()
+    );
     println!("The packet evaluates to {:?}", packet.evaluate());
 
     Ok(())
