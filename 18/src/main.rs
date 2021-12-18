@@ -23,7 +23,7 @@ enum SplitResult {
 }
 
 #[derive(Clone, Debug)]
-enum SnailfishNumber {
+pub enum SnailfishNumber {
     Pair(Box<SnailfishNumber>, Box<SnailfishNumber>),
     Number(u32),
 }
@@ -73,12 +73,10 @@ impl SnailfishNumber {
         }
     }
 
-    #[allow(dead_code)]
     pub fn explode(self) -> SnailfishNumber {
         self.explode_helper(0).0
     }
 
-    #[allow(dead_code)]
     pub fn split(self) -> SnailfishNumber {
         self.split_helper().0
     }
@@ -91,9 +89,9 @@ impl SnailfishNumber {
     }
 
     fn explode_helper(self, nesting_level: u8) -> (SnailfishNumber, ExplodeResult) {
-        if nesting_level >= 4 {
-            match self {
-                SnailfishNumber::Pair(fst, snd) => {
+        match self {
+            SnailfishNumber::Pair(fst, snd) => {
+                if nesting_level >= 4 {
                     let (fst, snd) = (*fst, *snd);
                     match (fst, snd) {
                         (SnailfishNumber::Number(l), SnailfishNumber::Number(r)) => {
@@ -103,14 +101,11 @@ impl SnailfishNumber {
                             Self::explode_pair(Box::new(fst), Box::new(snd), nesting_level)
                         }
                     }
+                } else {
+                    Self::explode_pair(fst, snd, nesting_level)
                 }
-                _ => (self, ExplodeResult::None),
             }
-        } else {
-            match self {
-                SnailfishNumber::Pair(fst, snd) => Self::explode_pair(fst, snd, nesting_level),
-                SnailfishNumber::Number(_) => (self, ExplodeResult::None),
-            }
+            SnailfishNumber::Number(_) => (self, ExplodeResult::None),
         }
     }
 
@@ -120,81 +115,62 @@ impl SnailfishNumber {
         nesting_level: u8,
     ) -> (SnailfishNumber, ExplodeResult) {
         let (fst, res) = fst.explode_helper(nesting_level + 1);
+        let fst = Box::new(fst);
         match res {
-            ExplodeResult::Done => (
-                SnailfishNumber::Pair(Box::new(fst), snd),
-                ExplodeResult::Done,
-            ),
-            ExplodeResult::Left(l) => (
-                SnailfishNumber::Pair(Box::new(fst), snd),
-                ExplodeResult::Left(l),
-            ),
+            ExplodeResult::Left(l) => (SnailfishNumber::Pair(fst, snd), ExplodeResult::Left(l)),
             ExplodeResult::Right(r) => (
-                SnailfishNumber::Pair(
-                    Box::new(fst),
-                    Box::new(snd.apply_explode_result(ExplodeResultApp::Left(r))),
-                ),
+                SnailfishNumber::Pair(fst, snd.apply_explode_result(ExplodeResultApp::Left(r))),
                 ExplodeResult::Done,
             ),
             ExplodeResult::LeftRight(l, r) => (
-                SnailfishNumber::Pair(
-                    Box::new(fst),
-                    Box::new(snd.apply_explode_result(ExplodeResultApp::Left(r))),
-                ),
+                SnailfishNumber::Pair(fst, snd.apply_explode_result(ExplodeResultApp::Left(r))),
                 ExplodeResult::Left(l),
             ),
+            ExplodeResult::Done => (SnailfishNumber::Pair(fst, snd), ExplodeResult::Done),
             ExplodeResult::None => {
                 let (snd, res) = snd.explode_helper(nesting_level + 1);
-                let fst = Box::new(fst);
+                let snd = Box::new(snd);
                 match res {
-                    ExplodeResult::Right(r) => (
-                        SnailfishNumber::Pair(fst, Box::new(snd)),
-                        ExplodeResult::Right(r),
-                    ),
                     ExplodeResult::Left(l) => (
                         SnailfishNumber::Pair(
-                            Box::new(fst.apply_explode_result(ExplodeResultApp::Right(l))),
-                            Box::new(snd),
+                            fst.apply_explode_result(ExplodeResultApp::Right(l)),
+                            snd,
                         ),
                         ExplodeResult::Done,
                     ),
+                    ExplodeResult::Right(r) => {
+                        (SnailfishNumber::Pair(fst, snd), ExplodeResult::Right(r))
+                    }
                     ExplodeResult::LeftRight(l, r) => (
                         SnailfishNumber::Pair(
-                            Box::new(fst.apply_explode_result(ExplodeResultApp::Right(l))),
-                            Box::new(snd),
+                            fst.apply_explode_result(ExplodeResultApp::Right(l)),
+                            snd,
                         ),
                         ExplodeResult::Right(r),
                     ),
-                    ExplodeResult::None => (
-                        SnailfishNumber::Pair(fst, Box::new(snd)),
-                        ExplodeResult::None,
-                    ),
-                    ExplodeResult::Done => (
-                        SnailfishNumber::Pair(fst, Box::new(snd)),
-                        ExplodeResult::Done,
-                    ),
+                    ExplodeResult::Done => (SnailfishNumber::Pair(fst, snd), ExplodeResult::Done),
+                    ExplodeResult::None => (SnailfishNumber::Pair(fst, snd), ExplodeResult::None),
                 }
             }
         }
     }
 
-    fn apply_explode_result(self, result: ExplodeResultApp) -> SnailfishNumber {
-        match result {
+    fn apply_explode_result(self, result: ExplodeResultApp) -> Box<SnailfishNumber> {
+        let sfn = match result {
             ExplodeResultApp::Left(l) => match self {
                 SnailfishNumber::Number(n) => SnailfishNumber::Number(n + l),
-                SnailfishNumber::Pair(fst, snd) => SnailfishNumber::Pair(
-                    Box::new(fst.apply_explode_result(ExplodeResultApp::Left(l))),
-                    snd,
-                ),
+                SnailfishNumber::Pair(fst, snd) => {
+                    SnailfishNumber::Pair(fst.apply_explode_result(ExplodeResultApp::Left(l)), snd)
+                }
             },
             ExplodeResultApp::Right(r) => match self {
                 SnailfishNumber::Number(n) => SnailfishNumber::Number(n + r),
-                SnailfishNumber::Pair(fst, snd) => SnailfishNumber::Pair(
-                    fst,
-                    Box::new(snd.apply_explode_result(ExplodeResultApp::Right(r))),
-                ),
+                SnailfishNumber::Pair(fst, snd) => {
+                    SnailfishNumber::Pair(fst, snd.apply_explode_result(ExplodeResultApp::Right(r)))
+                }
             },
-        }
+        };
+        Box::new(sfn)
     }
 
     fn split_helper(self) -> (SnailfishNumber, SplitResult) {
