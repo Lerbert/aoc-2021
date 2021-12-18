@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use std::ops::Add;
 
+use itertools::Itertools;
 use serde_json::{self, Value};
 
 enum ExplodeResult {
@@ -21,7 +22,7 @@ enum SplitResult {
     Done,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum SnailfishNumber {
     Pair(Box<SnailfishNumber>, Box<SnailfishNumber>),
     Number(u32),
@@ -72,10 +73,12 @@ impl SnailfishNumber {
         }
     }
 
+    #[allow(dead_code)]
     pub fn explode(self) -> SnailfishNumber {
         self.explode_helper(0).0
     }
 
+    #[allow(dead_code)]
     pub fn split(self) -> SnailfishNumber {
         self.split_helper().0
     }
@@ -238,9 +241,26 @@ fn main() {
         .map(|v| SnailfishNumber::from(v))
         .collect();
     let result = inputs
+        .clone()
         .into_iter()
         .reduce(|acc, v| acc + v)
         .expect("empty input");
     let mag = result.magnitude();
-    println!("{} {}", result, mag);
+    println!(
+        "Adding up all numbers yields {} (Magnitude {})",
+        result, mag
+    );
+
+    let largest = inputs
+        .clone()
+        .into_iter()
+        .permutations(2)
+        .map(|mut v| v.remove(0) + v.remove(0))
+        .map(|n| n.magnitude())
+        .max()
+        .expect("empty input");
+    println!(
+        "The largest magnitude we can obtain by adding two numbers from the list is {}",
+        largest
+    )
 }
