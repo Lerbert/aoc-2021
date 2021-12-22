@@ -206,10 +206,15 @@ fn reboot(reboot_sequence: &[RebootStep]) -> u128 {
 }
 
 fn initialization_sequence(reboot_sequence: &[RebootStep]) -> u128 {
+    let init_region = Cuboid {
+        x: Range { min: -50, max: 51 },
+        y: Range { min: -50, max: 51 },
+        z: Range { min: -50, max: 51 },
+    };
     reboot(
         reboot_sequence
             .iter()
-            .filter(|s| s.area.x.min.abs() < 50)
+            .filter(|s| init_region.encloses(&s.area))
             .map(|&s| s)
             .collect::<Vec<_>>()
             .as_slice(),
@@ -220,8 +225,10 @@ fn main() -> Result<()> {
     let inputs = include_str!("../input").trim();
     let reboot_sequence = reboot_parser::reboot_sequence(inputs)?;
 
-    let on_cubes = initialization_sequence(reboot_sequence.as_slice());
-    println!("{}", on_cubes);
+    let on_after_init = initialization_sequence(reboot_sequence.as_slice());
+    println!("{} cubes are on after initialization", on_after_init);
+    let on_after_reboot = reboot(reboot_sequence.as_slice());
+    println!("{} cubes are on after full reboot", on_after_reboot);
 
     Ok(())
 }
