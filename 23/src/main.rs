@@ -51,7 +51,7 @@ impl Display for Tile {
 #[derive(Clone, Debug)]
 struct State {
     hallway: [Tile; 11],
-    rooms: HashMap<Amphipod, (usize, [Tile; 2])>,
+    rooms: HashMap<Amphipod, (usize, [Tile; 4])>,
 }
 
 impl Display for State {
@@ -68,6 +68,14 @@ impl Display for State {
         write!(f, "\n  ")?;
         for (_, r) in &rooms {
             write!(f, "{} ", r[1])?
+        }
+        write!(f, "\n  ")?;
+        for (_, r) in &rooms {
+            write!(f, "{} ", r[2])?
+        }
+        write!(f, "\n  ")?;
+        for (_, r) in &rooms {
+            write!(f, "{} ", r[3])?
         }
         Ok(())
     }
@@ -97,17 +105,22 @@ impl Eq for State {}
 
 impl State {
     fn from(
-        amber_room: [Amphipod; 2],
-        bronze_room: [Amphipod; 2],
-        copper_room: [Amphipod; 2],
-        desert_room: [Amphipod; 2],
+        amber_room: [Amphipod; 4],
+        bronze_room: [Amphipod; 4],
+        copper_room: [Amphipod; 4],
+        desert_room: [Amphipod; 4],
     ) -> Self {
         let mut rooms = HashMap::new();
         rooms.insert(
             Amphipod::Amber,
             (
                 2,
-                [Tile::Occupied(amber_room[0]), Tile::Occupied(amber_room[1])],
+                [
+                    Tile::Occupied(amber_room[0]),
+                    Tile::Occupied(amber_room[1]),
+                    Tile::Occupied(amber_room[2]),
+                    Tile::Occupied(amber_room[3]),
+                ],
             ),
         );
         rooms.insert(
@@ -117,6 +130,8 @@ impl State {
                 [
                     Tile::Occupied(bronze_room[0]),
                     Tile::Occupied(bronze_room[1]),
+                    Tile::Occupied(bronze_room[2]),
+                    Tile::Occupied(bronze_room[3]),
                 ],
             ),
         );
@@ -127,6 +142,8 @@ impl State {
                 [
                     Tile::Occupied(copper_room[0]),
                     Tile::Occupied(copper_room[1]),
+                    Tile::Occupied(copper_room[2]),
+                    Tile::Occupied(copper_room[3]),
                 ],
             ),
         );
@@ -137,6 +154,8 @@ impl State {
                 [
                     Tile::Occupied(desert_room[0]),
                     Tile::Occupied(desert_room[1]),
+                    Tile::Occupied(desert_room[2]),
+                    Tile::Occupied(desert_room[3]),
                 ],
             ),
         );
@@ -226,15 +245,20 @@ impl State {
 
     fn is_room_free(&self, amphipod: Amphipod) -> Option<usize> {
         let (_, room) = self.rooms.get(&amphipod).expect("missing room mapping");
-        if matches!(room[1], Tile::Free) {
-            Some(1)
-        } else if matches!(room[1], Tile::Occupied(a) if a == amphipod)
-            && matches!(room[0], Tile::Free)
-        {
-            Some(0)
-        } else {
-            None
-        }
+        room.iter()
+            .rev()
+            .position(|t| matches!(t, Tile::Free))
+            .map(|i| room.len() - 1 - i)
+            .and_then(|i| {
+                if room[i + 1..]
+                    .iter()
+                    .all(|t| matches!(t, Tile::Occupied(a) if *a == amphipod))
+                {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
     }
 
     fn is_final(&self) -> bool {
@@ -254,9 +278,9 @@ impl State {
                     .map(|(room_idx, t)| {
                         if let Tile::Occupied(a) = t {
                             if a != room_type
-                                || room[room_idx + 1..]
-                                    .iter()
-                                    .any(|t| matches!(t, Tile::Occupied(other) if other != room_type))
+                                || room[room_idx + 1..].iter().any(
+                                    |t| matches!(t, Tile::Occupied(other) if other != room_type),
+                                )
                             {
                                 let (to, _) = self.rooms.get(a).expect("missing room mapping");
                                 // + 2 to move out and into room
@@ -372,11 +396,11 @@ fn lowest_cost_ordering(init: State) -> Option<u32> {
 
 fn main() {
     let burrow = State::from(
-        [Amphipod::Copper, Amphipod::Copper],
-        [Amphipod::Bronze, Amphipod::Desert],
-        [Amphipod::Amber, Amphipod::Amber],
-        [Amphipod::Desert, Amphipod::Bronze],
+        [Amphipod::Copper, Amphipod::Desert, Amphipod::Desert, Amphipod::Copper],
+        [Amphipod::Bronze, Amphipod::Copper, Amphipod::Bronze, Amphipod::Desert],
+        [Amphipod::Amber, Amphipod::Bronze, Amphipod::Amber, Amphipod::Amber],
+        [Amphipod::Desert, Amphipod::Amber, Amphipod::Copper, Amphipod::Bronze],
     );
-    let x = lowest_cost_ordering(burrow);
-    println!("{:?}", x)
+    let lowest_cost = lowest_cost_ordering(burrow).expect("found no ordering");
+    println!("The lowest cost to order the amphipods is {}", lowest_cost)
 }
