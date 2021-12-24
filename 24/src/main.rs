@@ -203,74 +203,55 @@ impl ALU {
     }
 
     pub fn has_state(&self, state: &HashMap<Register, Value>) -> bool {
-        self.registers.len() == state.len() && state.iter().all(|(k, v)| self.registers.get(k).map(|sv| v == sv).unwrap_or(false))
+        self.registers.len() == state.len()
+            && state
+                .iter()
+                .all(|(k, v)| self.registers.get(k).map(|sv| v == sv).unwrap_or(false))
     }
 }
 
-fn generate_model_numbers() -> Box<dyn Iterator<Item=Vec<Value>>> {
-    Box::new((11111111111111..99999999999999_i128)
-        .map(|mut i| {
-            let mut digits = Vec::new();
-            while i > 9 {
-                digits.push(i % 10);
-                i /= 10;
-            }
-            digits.push(i);
-            digits.reverse();
-            digits
-        })
-        .rev())
-}
-
-// fn test_model_numbers(monad: &[Instruction], alu: &mut ALU, seen_states: &mut Vec<HashMap<Register, Value>>) -> Option<Vec<u8>> {
-//     let first_inp = monad.iter().position(|i| matches!(i, Instruction::Inp(_)));
-//     if let Some(i) = first_inp {
-//         alu.execute(&monad[..i], &[]).expect("execution failed");
-//         let state = alu.save();
-//         let seen_states = Vec::new();
-//         for inp in (1..=9).rev() {
-//             alu.restore(state.clone());
-//             alu.execute(&monad[i..i+1], &[inp]).expect("execution failed");
-//             seen_states.push(alu.save)
-//             if let Some(mut model_number) = test_model_numbers(&monad[i+1..], alu) {
-//                 model_number.push(inp as u8);
-//                 return Some(model_number)
-//             }
-//         }
-//         None
-//     } else {
-//         alu.execute(monad, &[]).expect("execution failed");
-//         if alu.read(&Register::Z) == 0 {
-//             Some(vec![])
-//         } else {
-//             None
-//         }
-//     }
-// }
-
-fn test_model_numbers2(monad: &[Instruction], alu: &mut ALU, p: u32) -> Option<Vec<u8>> {
+fn test_model_numbers(
+    monad: &[Instruction],
+    alu: &mut ALU,
+    p: u32,
+    current: Vec<Value>,
+    seen_zs: &mut HashMap<u32, Vec<Value>>,
+) -> Option<Vec<u8>> {
+    println!("{:?}", current);
     if !monad.is_empty() {
         // First instruction should be inp
-        let mut seen_states = Vec::new();
         let state = alu.save();
         for inp in (1..=9).rev() {
             alu.restore(state.clone());
-            alu.execute(&monad[0..1], &[inp]).expect("first instruction was not an input");
+            alu.execute(&monad[0..1], &[inp])
+                .expect("first instruction was not an input");
             // Add 1 since we already executed the first instruction
-            let first_inp = monad[1..].iter().position(|i| matches!(i, Instruction::Inp(_))).unwrap_or(monad[1..].len()) + 1;
-            
-            alu.execute(&monad[1..first_inp], &[]).expect("execution failed");
+            let first_inp = monad[1..]
+                .iter()
+                .position(|i| matches!(i, Instruction::Inp(_)))
+                .unwrap_or(monad[1..].len())
+                + 1;
 
-            if seen_states.iter().any(|s| alu.has_state(s)) {
-                println!("Skipping {} at level {}", inp, p);
-                continue
+            alu.execute(&monad[1..first_inp], &[])
+                .expect("execution failed");
+            // Only check z, all other registers are overwritten anyway, high intermediate values for z are unlikely, since we want to end at 0
+            let z = alu.read(&Register::Z);
+            let seen_zs_level = seen_zs.entry(p).or_insert(Vec::new());
+            if seen_zs_level.contains(&z) || z > 800000 {
+                continue;
             } else {
-                seen_states.push(alu.save());
+                seen_zs_level.push(z)
             }
 
-            if let Some(mut model_number) = test_model_numbers2(&monad[first_inp..], alu, p - 1) {
+            if let Some(mut model_number) = test_model_numbers(
+                &monad[first_inp..],
+                alu,
+                p - 1,
+                current.iter().chain([inp].iter()).map(|&i| i).collect(),
+                seen_zs,
+            ) {
                 model_number.push(inp as u8);
-                return Some(model_number)
+                return Some(model_number);
             }
         }
         None
@@ -287,7 +268,9 @@ fn main() -> Result<()> {
     let inputs = include_str!("../input").trim();
     let monad = program_parser::program(inputs)?;
     let mut alu = ALU::new();
-    let mut model_number = test_model_numbers2(monad.as_slice(), &mut alu, 14).expect("no valid model number found");
+    let mut zs = HashMap::new();
+    let mut model_number = test_model_numbers(monad.as_slice(), &mut alu, 14, vec![], &mut zs)
+        .expect("no valid model number found");
     model_number.reverse();
     println!("{:?}", model_number);
     Ok(())
