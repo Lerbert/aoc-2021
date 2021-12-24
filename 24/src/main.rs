@@ -83,11 +83,11 @@ pub enum Instruction {
 }
 
 #[derive(Clone, Debug)]
-pub struct ALU {
+pub struct Alu {
     registers: HashMap<Register, Value>,
 }
 
-impl Display for ALU {
+impl Display for Alu {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{} = {}, ", Register::W, self.read(&Register::W))?;
         write!(f, "{} = {}, ", Register::X, self.read(&Register::X))?;
@@ -96,7 +96,7 @@ impl Display for ALU {
     }
 }
 
-impl ALU {
+impl Alu {
     pub fn new() -> Self {
         let mut registers = HashMap::with_capacity(4);
         registers.insert(Register::W, 0);
@@ -104,7 +104,7 @@ impl ALU {
         registers.insert(Register::Y, 0);
         registers.insert(Register::Z, 0);
         registers.shrink_to_fit();
-        ALU { registers }
+        Alu { registers }
     }
 
     pub fn execute(&mut self, prog: &[Instruction], inputs: &[Value]) -> Result<()> {
@@ -210,56 +210,142 @@ impl ALU {
     }
 }
 
-fn test_model_numbers(
-    monad: &[Instruction],
-    alu: &mut ALU,
-    p: u32,
-    current: Vec<Value>,
-    seen_zs: &mut HashMap<u32, Vec<Value>>,
-) -> Option<Vec<u8>> {
-    println!("{:?}", current);
-    if !monad.is_empty() {
-        // First instruction should be inp
-        let state = alu.save();
-        for inp in (1..=9).rev() {
-            alu.restore(state.clone());
-            alu.execute(&monad[0..1], &[inp])
-                .expect("first instruction was not an input");
-            // Add 1 since we already executed the first instruction
-            let first_inp = monad[1..]
-                .iter()
-                .position(|i| matches!(i, Instruction::Inp(_)))
-                .unwrap_or(monad[1..].len())
-                + 1;
+pub struct ModelNumberFinder {
+    alu: Alu,
+    seen_zs: HashMap<usize, Vec<Value>>,
+    clamp: Value,
+}
 
-            alu.execute(&monad[1..first_inp], &[])
-                .expect("execution failed");
-            // Only check z, all other registers are overwritten anyway, high intermediate values for z are unlikely, since we want to end at 0
-            let z = alu.read(&Register::Z);
-            let seen_zs_level = seen_zs.entry(p).or_insert(Vec::new());
-            if seen_zs_level.contains(&z) || z > 800000 {
-                continue;
-            } else {
-                seen_zs_level.push(z)
+impl ModelNumberFinder {
+    pub fn new(clamp: Value) -> Self {
+        ModelNumberFinder {
+            alu: Alu::new(),
+            seen_zs: HashMap::new(),
+            clamp
+        }
+    }
+
+    pub fn find_max_model_number(mut self, monad: &[Instruction]) -> Option<u64> {
+        self.find_max_model_number_helper(monad, Vec::new())
+    }
+
+    pub fn find_min_model_number(mut self, monad: &[Instruction]) -> Option<u64> {
+        self.find_min_model_number_helper(monad, Vec::new())
+    }
+
+    fn find_max_model_number_helper(
+        &mut self,
+        monad: &[Instruction],
+        current_prefix: Vec<u8>,
+    ) -> Option<u64> {
+        if !monad.is_empty() {
+            // First instruction should be inp
+            let state = self.alu.save();
+            for inp in (1..=9).rev() {
+                self.alu.restore(state.clone());
+                self.alu
+                    .execute(&monad[0..1], &[inp])
+                    .expect("first instruction was not an input");
+                // Add 1 since we already executed the first instruction
+                let first_inp = monad[1..]
+                    .iter()
+                    .position(|i| matches!(i, Instruction::Inp(_)))
+                    .unwrap_or(monad[1..].len())
+                    + 1;
+
+                self.alu
+                    .execute(&monad[1..first_inp], &[])
+                    .expect("execution failed");
+                // Only check z, all other registers are overwritten anyway, high intermediate values for z are unlikely, since we want to end at 0
+                let z = self.alu.read(&Register::Z);
+                let seen_zs_level = self
+                    .seen_zs
+                    .entry(current_prefix.len())
+                    .or_insert(Vec::new());
+                if seen_zs_level.contains(&z) || z > self.clamp {
+                    continue;
+                } else {
+                    seen_zs_level.push(z)
+                }
+                if let Some(model_number) = self.find_max_model_number_helper(
+                    &monad[first_inp..],
+                    current_prefix
+                        .iter()
+                        .chain([inp as u8].iter())
+                        .map(|&i| i)
+                        .collect(),
+                ) {
+                    return Some(model_number);
+                }
             }
-
-            if let Some(mut model_number) = test_model_numbers(
-                &monad[first_inp..],
-                alu,
-                p - 1,
-                current.iter().chain([inp].iter()).map(|&i| i).collect(),
-                seen_zs,
-            ) {
-                model_number.push(inp as u8);
-                return Some(model_number);
+            None
+        } else {
+            if self.alu.read(&Register::Z) == 0 {
+                let model_number = current_prefix
+                    .iter()
+                    .fold(0, |acc, x| acc * 10 + *x as u64);
+                Some(model_number)
+            } else {
+                None
             }
         }
-        None
-    } else {
-        if alu.read(&Register::Z) == 0 {
-            Some(vec![])
-        } else {
+    }
+
+    fn find_min_model_number_helper(
+        &mut self,
+        monad: &[Instruction],
+        current_prefix: Vec<u8>,
+    ) -> Option<u64> {
+        if !monad.is_empty() {
+            // First instruction should be inp
+            let state = self.alu.save();
+            for inp in 1..=9 {
+                self.alu.restore(state.clone());
+                self.alu
+                    .execute(&monad[0..1], &[inp])
+                    .expect("first instruction was not an input");
+                // Add 1 since we already executed the first instruction
+                let first_inp = monad[1..]
+                    .iter()
+                    .position(|i| matches!(i, Instruction::Inp(_)))
+                    .unwrap_or(monad[1..].len())
+                    + 1;
+
+                self.alu
+                    .execute(&monad[1..first_inp], &[])
+                    .expect("execution failed");
+                // Only check z, all other registers are overwritten anyway, high intermediate values for z are unlikely, since we want to end at 0
+                let z = self.alu.read(&Register::Z);
+                let seen_zs_level = self
+                    .seen_zs
+                    .entry(current_prefix.len())
+                    .or_insert(Vec::new());
+                if seen_zs_level.contains(&z) || z > self.clamp {
+                    continue;
+                } else {
+                    seen_zs_level.push(z)
+                }
+                if let Some(model_number) = self.find_min_model_number_helper(
+                    &monad[first_inp..],
+                    current_prefix
+                        .iter()
+                        .chain([inp as u8].iter())
+                        .map(|&i| i)
+                        .collect(),
+                ) {
+                    return Some(model_number);
+                }
+            }
             None
+        } else {
+            if self.alu.read(&Register::Z) == 0 {
+                let model_number = current_prefix
+                    .iter()
+                    .fold(0, |acc, x| acc * 10 + *x as u64);
+                Some(model_number)
+            } else {
+                None
+            }
         }
     }
 }
@@ -267,11 +353,16 @@ fn test_model_numbers(
 fn main() -> Result<()> {
     let inputs = include_str!("../input").trim();
     let monad = program_parser::program(inputs)?;
-    let mut alu = ALU::new();
-    let mut zs = HashMap::new();
-    let mut model_number = test_model_numbers(monad.as_slice(), &mut alu, 14, vec![], &mut zs)
+
+    let max_finder = ModelNumberFinder::new(600_000);
+    let max_model_number = max_finder.find_max_model_number(monad.as_slice())
         .expect("no valid model number found");
-    model_number.reverse();
-    println!("{:?}", model_number);
+    println!("The maximum valid model number is {}", max_model_number);
+
+    let min_finder = ModelNumberFinder::new(600_000);
+    let min_model_number = min_finder.find_min_model_number(monad.as_slice())
+        .expect("no valid model number found");
+    println!("The minimum valid model number is {}", min_model_number);
+
     Ok(())
 }
