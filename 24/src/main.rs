@@ -221,85 +221,33 @@ impl ModelNumberFinder {
         ModelNumberFinder {
             alu: Alu::new(),
             seen_zs: HashMap::new(),
-            clamp
+            clamp,
         }
     }
 
     pub fn find_max_model_number(mut self, monad: &[Instruction]) -> Option<u64> {
-        self.find_max_model_number_helper(monad, Vec::new())
+        self.find_model_number_helper(monad, Vec::new(), true)
     }
 
     pub fn find_min_model_number(mut self, monad: &[Instruction]) -> Option<u64> {
-        self.find_min_model_number_helper(monad, Vec::new())
+        self.find_model_number_helper(monad, Vec::new(), false)
     }
 
-    fn find_max_model_number_helper(
+    fn find_model_number_helper(
         &mut self,
         monad: &[Instruction],
         current_prefix: Vec<u8>,
+        reverse: bool,
     ) -> Option<u64> {
         if !monad.is_empty() {
             // First instruction should be inp
             let state = self.alu.save();
-            for inp in (1..=9).rev() {
-                self.alu.restore(state.clone());
-                self.alu
-                    .execute(&monad[0..1], &[inp])
-                    .expect("first instruction was not an input");
-                // Add 1 since we already executed the first instruction
-                let first_inp = monad[1..]
-                    .iter()
-                    .position(|i| matches!(i, Instruction::Inp(_)))
-                    .unwrap_or(monad[1..].len())
-                    + 1;
-
-                self.alu
-                    .execute(&monad[1..first_inp], &[])
-                    .expect("execution failed");
-                // Only check z, all other registers are overwritten anyway, high intermediate values for z are unlikely, since we want to end at 0
-                let z = self.alu.read(&Register::Z);
-                let seen_zs_level = self
-                    .seen_zs
-                    .entry(current_prefix.len())
-                    .or_insert(Vec::new());
-                if seen_zs_level.contains(&z) || z > self.clamp {
-                    continue;
-                } else {
-                    seen_zs_level.push(z)
-                }
-                if let Some(model_number) = self.find_max_model_number_helper(
-                    &monad[first_inp..],
-                    current_prefix
-                        .iter()
-                        .chain([inp as u8].iter())
-                        .map(|&i| i)
-                        .collect(),
-                ) {
-                    return Some(model_number);
-                }
-            }
-            None
-        } else {
-            if self.alu.read(&Register::Z) == 0 {
-                let model_number = current_prefix
-                    .iter()
-                    .fold(0, |acc, x| acc * 10 + *x as u64);
-                Some(model_number)
+            let range: Vec<_> = if reverse {
+                (1..=9).rev().collect()
             } else {
-                None
-            }
-        }
-    }
-
-    fn find_min_model_number_helper(
-        &mut self,
-        monad: &[Instruction],
-        current_prefix: Vec<u8>,
-    ) -> Option<u64> {
-        if !monad.is_empty() {
-            // First instruction should be inp
-            let state = self.alu.save();
-            for inp in 1..=9 {
+                (1..=9).collect()
+            };
+            for inp in range {
                 self.alu.restore(state.clone());
                 self.alu
                     .execute(&monad[0..1], &[inp])
@@ -325,23 +273,22 @@ impl ModelNumberFinder {
                 } else {
                     seen_zs_level.push(z)
                 }
-                if let Some(model_number) = self.find_min_model_number_helper(
+                if let Some(model_number) = self.find_model_number_helper(
                     &monad[first_inp..],
                     current_prefix
                         .iter()
                         .chain([inp as u8].iter())
                         .map(|&i| i)
                         .collect(),
+                    reverse,
                 ) {
-                    return Some(model_number);
+                    return Some(model_number)
                 }
             }
             None
         } else {
             if self.alu.read(&Register::Z) == 0 {
-                let model_number = current_prefix
-                    .iter()
-                    .fold(0, |acc, x| acc * 10 + *x as u64);
+                let model_number = current_prefix.iter().fold(0, |acc, x| acc * 10 + *x as u64);
                 Some(model_number)
             } else {
                 None
@@ -355,12 +302,14 @@ fn main() -> Result<()> {
     let monad = program_parser::program(inputs)?;
 
     let max_finder = ModelNumberFinder::new(600_000);
-    let max_model_number = max_finder.find_max_model_number(monad.as_slice())
+    let max_model_number = max_finder
+        .find_max_model_number(monad.as_slice())
         .expect("no valid model number found");
     println!("The maximum valid model number is {}", max_model_number);
 
     let min_finder = ModelNumberFinder::new(600_000);
-    let min_model_number = min_finder.find_min_model_number(monad.as_slice())
+    let min_model_number = min_finder
+        .find_min_model_number(monad.as_slice())
         .expect("no valid model number found");
     println!("The minimum valid model number is {}", min_model_number);
 
